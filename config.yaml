@@ -1,0 +1,12 @@
+# Project configuration for foil_case_study
+# Adjust paths if running on a different system
+
+paths:
+  raw_data: "/home/alyona/personal_projects/foil_case_study/data/online_retail_raw.csv"
+  transactions: "/home/alyona/personal_projects/foil_case_study/data/transactions.csv"
+  cancellations: "/home/alyona/personal_projects/foil_case_study/data/cancellations.csv"
+  outliers: "/home/alyona/personal_projects/foil_case_study/data/outliers.csv"
+
+outlier_thresholds:
+  quantity: 5000
+  unit_price: 250
