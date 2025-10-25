@@ -1,54 +1,90 @@
 from pathlib import Path
 import pandas as pd
+import yaml
 
-# --- Paths (hard-coded) ---
-data_path = Path("/home/alyona/personal_projects/foil_case_study/data/online_retail_raw.csv")
-transactions_output_path = Path("/home/alyona/personal_projects/foil_case_study/data/transactions.csv")
-cancellations_output_path = Path("/home/alyona/personal_projects/foil_case_study/data/cancellations.csv")
 
-# --- Read CSV, force InvoiceNo as string to preserve 'C' prefix ---
-df = pd.read_csv(data_path, dtype={"InvoiceNo": str})
-print("Initial number of records:", len(df))
+# --- 1️⃣ Load config file ---
+def load_config(config_path: Path = Path(__file__).resolve().parents[1] / "config.yaml"):
+    with open(config_path, "r") as file:
+        config = yaml.safe_load(file)
+    return config
 
-# --- Cleaning Steps ---
-# Remove duplicates
-df = df.drop_duplicates()
-df.columns = df.columns.str.strip()
 
-# Remove rows with missing Description or CustomerID
-df = df[df["Description"].notna()]
-df = df[df["CustomerID"].notna()]
+# --- 2️⃣ Load and clean data ---
+def load_and_clean_data(path: Path) -> pd.DataFrame:
+    df = pd.read_csv(path, dtype={"InvoiceNo": str})
+    print(f"Initial records: {len(df):,}")
 
-# Keep only StockCode that are 5-digit numbers
-df = df[df["StockCode"].astype(str).str.match(r"^\d{5}$")]
+    df = df.drop_duplicates()
+    df.columns = df.columns.str.strip()
 
-# Keep only Description containing letters
-df = df[df["Description"].str.contains(r"[a-zA-Z]", na=False)]
+    # Remove rows with missing Description, CustomerID, Country
+    df = df[df["Description"].notna()]
+    df = df[df["CustomerID"].notna()]
+    df = df[df["Country"].notna()]
 
-# Convert InvoiceDate to datetime, drop invalid
-df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"], errors="coerce")
-df = df[df["InvoiceDate"].notna()]
+    # Convert date
+    df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"], errors="coerce")
+    df = df[df["InvoiceDate"].notna()]
 
-# Keep only CustomerID that are 5-digit numbers
-df = df[df["CustomerID"].between(10000, 99999)]
-df["CustomerID"] = df["CustomerID"].astype(int).astype(str)  # convert to string categorical
+    # Convert and clean CustomerID
+    df["CustomerID"] = df["CustomerID"].astype(int).astype(str)
 
-# Remove rows with missing Country
-df = df[df["Country"].notna()]
+    # Keep only valid formats
+    df = df[df["InvoiceNo"].str.match(r"^C?\d{6}$")]
+    df = df[df["StockCode"].astype(str).str.match(r"^\d{5}$")]
+    df = df[df["Description"].str.contains(r"[a-zA-Z]", na=False)]
+    df = df[df["CustomerID"].astype(str).str.match(r"^\d{5}$")]
 
-# Keep only valid InvoiceNo (6-digit numbers, optionally prefixed with 'C')
-df = df[df["InvoiceNo"].str.match(r"^C?\d{6}$")]
+    print(f"After cleaning: {len(df):,}")
+    return df
 
-# --- Split transactions vs cancellations ---
-transactions_df = df[~df["InvoiceNo"].str.startswith("C")].copy()
-cancellations_df = df[df["InvoiceNo"].str.startswith("C")].copy()
 
-# Optional: remove negative Quantity/UnitPrice only from transactions
-transactions_df = transactions_df[(transactions_df["Quantity"] > 0) & (transactions_df["UnitPrice"] > 0)]
+# --- 3️⃣ Split transactions vs cancellations ---
+def split_transactions(df: pd.DataFrame):
+    transactions = df[~df["InvoiceNo"].str.startswith("C")].copy()
+    cancellations = df[df["InvoiceNo"].str.startswith("C")].copy()
+    print(f"Transactions: {len(transactions):,}, Cancellations: {len(cancellations):,}")
+    return transactions, cancellations
 
-# --- Save cleaned datasets ---
-transactions_df.to_csv(transactions_output_path, index=False)
-cancellations_df.to_csv(cancellations_output_path, index=False)
 
-print(f"Transactions dataset saved to: {transactions_output_path}, rows: {len(transactions_df)}")
-print(f"Cancellations dataset saved to: {cancellations_output_path}, rows: {len(cancellations_df)}")
+# --- 4️⃣ Detect outliers ---
+def detect_outliers(df: pd.DataFrame, qty_threshold: int, price_threshold: float):
+    qty_outliers = df[df["Quantity"] > qty_threshold]
+    price_outliers = df[df["UnitPrice"] > price_threshold]
+    outliers = pd.concat([qty_outliers, price_outliers]).drop_duplicates()
+
+    print(f"Outliers found: {len(outliers):,}")
+
+    # Remove outliers from clean dataset
+    df_clean = df[~df.index.isin(outliers.index)].copy()
+    return df_clean, outliers
+
+
+# --- 5️⃣ Save outputs ---
+def save_datasets(transactions, cancellations, outliers, paths):
+    transactions.to_csv(paths["transactions"], index=False)
+    cancellations.to_csv(paths["cancellations"], index=False)
+    outliers.to_csv(paths["outliers"], index=False)
+
+    print(f"✅ Saved transactions: {len(transactions):,} → {paths['transactions']}")
+    print(f"✅ Saved cancellations: {len(cancellations):,} → {paths['cancellations']}")
+    print(f"✅ Saved outliers: {len(outliers):,} → {paths['outliers']}")
+
+
+# --- 6️⃣ Orchestrate pipeline ---
+def main():
+    config = load_config()
+    paths = config["paths"]
+    thresholds = config["outlier_thresholds"]
+
+    df = load_and_clean_data(Path(paths["raw_data"]))
+    transactions, cancellations = split_transactions(df)
+    clean_transactions, outliers = detect_outliers(
+        transactions, thresholds["quantity"], thresholds["unit_price"]
+    )
+    save_datasets(clean_transactions, cancellations, outliers, paths)
+
+
+if __name__ == "__main__":
+    main()
