@@ -1,0 +1,40 @@
+2025-10-26 20:14:54,049 [INFO] Logger initialized.
+2025-10-26 20:14:54,049 [INFO] Starting ETL pipeline...
+2025-10-26 20:14:54,049 [INFO] Step 1: Extracting raw dataset...
+2025-10-26 20:14:54,051 [INFO] Downloading dataset ID 352 from UCI repository...
+2025-10-26 20:14:59,611 [WARNING] 135080 missing values in critical column 'CustomerID'
+2025-10-26 20:15:01,075 [INFO] Dataset saved to: /home/alyona/personal_projects/foil_case_study/data/online_retail_raw.csv
+2025-10-26 20:15:01,075 [INFO] Shape: 541,909 rows x 8 columns
+2025-10-26 20:15:01,087 [INFO] Step 2: Transforming dataset...
+2025-10-26 20:15:01,088 [INFO] Configuration loaded from /home/alyona/personal_projects/foil_case_study/config.yaml
+2025-10-26 20:15:01,432 [INFO] Loaded raw dataset: 541,909 records
+2025-10-26 20:15:02,334 [INFO] After cleaning: 366,179 records remaining
+2025-10-26 20:15:02,353 [INFO] Filtered out 32 rows with non-positive UnitPrice
+2025-10-26 20:15:02,463 [INFO] Split into 358,277 transactions and 7,870 cancellations
+2025-10-26 20:15:02,472 [INFO] Filtered out 0 rows with non-positive Quantity
+2025-10-26 20:15:02,479 [INFO] Detected 12 outliers
+2025-10-26 20:15:03,846 [INFO] Saved transactions → /home/alyona/personal_projects/foil_case_study/data/transactions.csv
+2025-10-26 20:15:03,846 [INFO] Saved cancellations → /home/alyona/personal_projects/foil_case_study/data/cancellations.csv
+2025-10-26 20:15:03,846 [INFO] Saved outliers → /home/alyona/personal_projects/foil_case_study/data/outliers.csv
+2025-10-26 20:15:03,846 [INFO] Transform stage completed successfully
+2025-10-26 20:15:03,855 [INFO] Step 3: Validating cleaned datasets...
+2025-10-26 20:15:03,856 [INFO] Configuration loaded from /home/alyona/personal_projects/foil_case_study/config.yaml
+2025-10-26 20:15:04,092 [INFO] Datasets loaded successfully.
+2025-10-26 20:15:04,092 [INFO] Validating transactions table...
+2025-10-26 20:15:04,092 [INFO] transactions: 358,265 rows loaded.
+2025-10-26 20:15:04,338 [INFO] No issues found in transactions.
+2025-10-26 20:15:04,338 [INFO] Validating cancellations table...
+2025-10-26 20:15:04,338 [INFO] cancellations: 7,870 rows loaded.
+2025-10-26 20:15:04,345 [INFO] No issues found in cancellations.
+2025-10-26 20:15:04,345 [INFO] Validating outliers table...
+2025-10-26 20:15:04,345 [INFO] outliers: 12 rows loaded.
+2025-10-26 20:15:04,346 [INFO] No issues found in outliers.
+2025-10-26 20:15:04,346 [INFO] Data validation completed successfully.
+2025-10-26 20:15:04,346 [INFO] Step 4: Loading datasets into warehouse...
+2025-10-26 20:15:04,347 [INFO] Configuration loaded from /home/alyona/personal_projects/foil_case_study/config.yaml
+2025-10-26 20:15:04,564 [INFO] Transform outputs loaded successfully
+2025-10-26 20:15:04,579 [INFO] Fact table prepared with 366,135 rows
+2025-10-26 20:15:04,876 [INFO] Saved fact_sales.parquet with 366,135 rows → /home/alyona/personal_projects/foil_case_study/data/warehouse/fact_sales.parquet
+2025-10-26 20:15:04,879 [INFO] Saved outliers.parquet with 12 rows → /home/alyona/personal_projects/foil_case_study/data/warehouse/outliers.parquet
+2025-10-26 20:15:04,879 [INFO] Load stage completed successfully
+2025-10-26 20:15:04,888 [INFO] ETL pipeline completed successfully!
