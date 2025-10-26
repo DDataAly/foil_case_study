@@ -1,0 +1,9 @@
+column,dtype,num_missing,num_unique,sample_values
+InvoiceNo,object,0,25900,"['536365', '536366', '536367', '536368', '536369']"
+StockCode,object,0,4070,"['85123A', '71053', '84406B', '84029G', '84029E']"
+Description,object,1454,4223,"['WHITE HANGING HEART T-LIGHT HOLDER', 'WHITE METAL LANTERN', 'CREAM CUPID HEARTS COAT HANGER', 'KNITTED UNION FLAG HOT WATER BOTTLE', 'RED WOOLLY HOTTIE WHITE HEART.']"
+Quantity,int64,0,722,"[6, 8, 2, 32, 3]"
+InvoiceDate,object,0,23260,"['12/1/2010 8:26', '12/1/2010 8:28', '12/1/2010 8:34', '12/1/2010 8:35', '12/1/2010 8:45']"
+UnitPrice,float64,0,1630,"[2.55, 3.39, 2.75, 7.65, 4.25]"
+CustomerID,float64,135080,4372,"[17850.0, 13047.0, 12583.0, 13748.0, 15100.0]"
+Country,object,0,38,"['United Kingdom', 'France', 'Australia', 'Netherlands', 'Germany']"
