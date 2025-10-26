@@ -142,6 +142,10 @@ The pipeline implements a full end-to-end ETL workflow for online retail transac
 - Supports future automation or scheduling (e.g., via cron or Airflow).  
 - Users only need to run `python run.py` from the project root to process the dataset end-to-end.
 
+### Pipeline Architecture Diagram
+
+For the end-to-end ETL workflow for the Online Retail dataset, including extraction, transformation, validation, loading, and the resulting star schema warehouse see [Pipeline Architecture](docs/architecture_diagram.png)
+
 ## 🗄️ Dimensional Data Model
 
 To support analytical queries on retail transactions, the pipeline implements a **star schema** consisting of a central fact table and multiple dimension tables.
