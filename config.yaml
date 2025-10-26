@@ -12,6 +12,7 @@ paths:
   dim_products: "dim_products.parquet"
   dim_time: "dim_time.parquet"
   outliers_parquet: "outliers.parquet"
+  profiling_report: "/home/alyona/personal_projects/foil_case_study/docs/raw_data_profile.csv" 
 
 outlier_thresholds:
   quantity: 5000
