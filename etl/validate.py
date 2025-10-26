@@ -1,124 +1,97 @@
-# validate.py
 from pathlib import Path
-import json
 import pandas as pd
-import great_expectations as gx
+import yaml
 
-# --------------------------
-# Hard-coded paths (as requested)
-# --------------------------
-DATA_PATH = Path("/home/alyona/personal_projects/foil_case_study/data/transactions.csv")
-RESULTS_PATH = Path("/home/alyona/personal_projects/foil_case_study/data/validation_results.json")
 
-# --------------------------
-# Load dataframe
-# --------------------------
-df = pd.read_csv(DATA_PATH, dtype={"InvoiceNo": str})  # keep InvoiceNo as string to preserve 'C' prefix
+# --- Load config file ---
+def load_config(config_path: Path = Path(__file__).resolve().parents[1] / "config.yaml"):
+    with open(config_path, "r") as file:
+        config = yaml.safe_load(file)
+    return config
 
-# --------------------------
-# Create / get GX Data Context
-# --------------------------
-# This will look for a great_expectations project in cwd or create an ephemeral context depending on your install.
-context = gx.get_context()
 
-# --------------------------
-# Register a pandas datasource (idempotent)
-# --------------------------
-PANDAS_DATASOURCE_NAME = "pandas_ds"
-try:
-    # Newer GX (v1.x) exposes context.data_sources
-    datasource = context.data_sources.get(PANDAS_DATASOURCE_NAME)
-except Exception:
-    try:
-        datasource = context.data_sources.add_pandas(name=PANDAS_DATASOURCE_NAME)
-    except Exception:
-        # Fallback for older API shapes (some older docs used context.sources)
-        try:
-            datasource = context.sources.add_pandas(name=PANDAS_DATASOURCE_NAME)
-        except Exception:
-            raise RuntimeError(
-                "Could not create a pandas datasource in your DataContext. "
-                "Check your Great Expectations version and docs."
-            )
+# --- Load datasets using config paths ---
+def load_datasets(config):
+    paths = config["paths"]
 
-# --------------------------
-# Add a Data Asset for this dataframe
-# --------------------------
-DATA_ASSET_NAME = "transactions_asset"
-# If asset already exists, get it; otherwise add a new dataframe asset
-try:
-    data_asset = datasource.get_asset(DATA_ASSET_NAME)
-except Exception:
-    # add_dataframe_asset is available in the modern API
-    data_asset = datasource.add_dataframe_asset(name=DATA_ASSET_NAME)
+    transactions_df = pd.read_csv(
+        paths["transactions"], dtype={"InvoiceNo": str, "CustomerID": str}
+    )
+    cancellations_df = pd.read_csv(
+        paths["cancellations"], dtype={"InvoiceNo": str, "CustomerID": str}
+    )
+    outliers_df = pd.read_csv(
+        paths["outliers"], dtype={"InvoiceNo": str, "CustomerID": str}
+    )
 
-# --------------------------
-# Build a BatchRequest for this in-memory dataframe
-# (for dataframe data assets you must pass the dataframe itself)
-# --------------------------
-batch_request = data_asset.build_batch_request(dataframe=df)
+    print("✅ Datasets loaded successfully from config paths.")
+    return transactions_df, cancellations_df, outliers_df
 
-# --------------------------
-# Create / ensure an Expectation Suite exists
-# --------------------------
-SUITE_NAME = "transactions_suite"
-try:
-    # preferred modern helper
-    context.create_expectation_suite(expectation_suite_name=SUITE_NAME, overwrite_existing=True)
-except Exception:
-    # fallback: construct an ExpectationSuite object and add it to the context
-    try:
-        from great_expectations.core.expectation_suite import ExpectationSuite
-        suite = ExpectationSuite(name=SUITE_NAME)
-        context.suites.add(suite)
-    except Exception:
-        # if this fails, continue — we'll try to get a validator and create the suite there
-        pass
 
-# --------------------------
-# Obtain a Validator (the object to run expectations against)
-# --------------------------
-validator = context.get_validator(batch_request=batch_request, expectation_suite_name=SUITE_NAME)
+# --- Validation logic ---
+def validate_table(df, table_name):
+    print(f"\n🔍 Validating {table_name}...")
 
-# --------------------------
-# Example expectations (3 quick checks)
-# - InvoiceNo not null
-# - CustomerID present / 5-digit (we keep a simple not-null + numeric check here)
-# - UnitPrice positive, Quantity positive
-# Add or change to match your quality rules
-# --------------------------
-validator.expect_column_values_to_not_be_null("InvoiceNo")
-validator.expect_column_values_to_not_be_null("CustomerID")
-validator.expect_column_values_to_be_between("UnitPrice", min_value=0.01, mostly=0.999)
-validator.expect_column_values_to_be_between("Quantity", min_value=1, mostly=0.999)
+    total_rows = len(df)
+    print(f"Total rows: {total_rows:,}")
 
-# You can add more expectations here (e.g., pattern checks for InvoiceNo, StockCode format, date parseable, etc.)
+    issues = []
 
-# Save expectation suite (persist the expectations in the GX context)
-validator.save_expectation_suite(discard_failed_expectations=False)
+    # Check required columns
+    required_columns = [
+        "InvoiceNo", "StockCode", "Description", "Quantity",
+        "InvoiceDate", "UnitPrice", "CustomerID", "Country"
+    ]
+    for col in required_columns:
+        null_count = df[col].isna().sum()
+        if null_count > 0:
+            issues.append(f"{col} has {null_count} nulls")
 
-# --------------------------
-# Run validation
-# --------------------------
-validation_result = validator.validate()
+    # Quantity and UnitPrice rules
+    if table_name in ["transactions", "outliers"]:
+        neg_qty = (df["Quantity"] <= 0).sum()
+        neg_price = (df["UnitPrice"] <= 0).sum()
+        if neg_qty > 0:
+            issues.append(f"{neg_qty} rows have non-positive Quantity")
+        if neg_price > 0:
+            issues.append(f"{neg_price} rows have non-positive UnitPrice")
+    elif table_name == "cancellations":
+        neg_price = (df["UnitPrice"] <= 0).sum()
+        if neg_price > 0:
+            issues.append(f"{neg_price} rows have non-positive UnitPrice (should not happen)")
 
-# Print a short summary
-print("Validation success:", validation_result.success)
-print("Evaluated expectations:", validation_result.statistics.get("evaluated_expectations"))
-print("Success percent:", validation_result.statistics.get("success_percent"))
+    # CustomerID format
+    invalid_custid = df[~df["CustomerID"].str.match(r"^\d{5}$")]
+    if len(invalid_custid) > 0:
+        issues.append(f"{len(invalid_custid)} rows have invalid CustomerID")
 
-# --------------------------
-# Persist full JSON result for review / pipeline logs
-# --------------------------
-try:
-    # .to_json_dict() available on the ValidationResult
-    result_dict = validation_result.to_json_dict()
-except Exception:
-    # older versions may have .to_json_dict or .to_json; fallback to casting
-    result_dict = json.loads(validation_result.json())
+    # InvoiceNo format
+    if table_name == "transactions" or table_name == "outliers":
+        invalid_invoice = df[~df["InvoiceNo"].str.match(r"^\d{6}$")]
+    else:  # cancellations
+        invalid_invoice = df[~df["InvoiceNo"].str.match(r"^C\d{6}$")]
 
-RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-with open(RESULTS_PATH, "w", encoding="utf-8") as fh:
-    json.dump(result_dict, fh, indent=2)
+    if len(invalid_invoice) > 0:
+        issues.append(f"{len(invalid_invoice)} rows have invalid InvoiceNo format")
 
-print(f"Full validation result written to: {RESULTS_PATH}")
+    # Print results
+    if issues:
+        print("⚠️  Issues found:")
+        for issue in issues:
+            print(f" - {issue}")
+    else:
+        print("✅ No issues found.")
+
+
+# --- Main orchestration ---
+def main():
+    config = load_config()
+    transactions_df, cancellations_df, outliers_df = load_datasets(config)
+
+    validate_table(transactions_df, "transactions")
+    validate_table(cancellations_df, "cancellations")
+    validate_table(outliers_df, "outliers")
+
+
+if __name__ == "__main__":
+    main()
