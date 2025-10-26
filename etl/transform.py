@@ -40,7 +40,15 @@ def load_and_clean_data(path: Path) -> pd.DataFrame:
     return df
 
 
-# --- 3️⃣ Split transactions vs cancellations ---
+# --- 3️⃣ Filter invalid UnitPrices ---
+def filter_invalid_prices(df: pd.DataFrame) -> pd.DataFrame:
+    before = len(df)
+    df = df[df["UnitPrice"] > 0]
+    print(f"Filtered non-positive UnitPrices: {before - len(df):,} rows removed")
+    return df
+
+
+# --- 4️⃣ Split transactions vs cancellations ---
 def split_transactions(df: pd.DataFrame):
     transactions = df[~df["InvoiceNo"].str.startswith("C")].copy()
     cancellations = df[df["InvoiceNo"].str.startswith("C")].copy()
@@ -48,7 +56,15 @@ def split_transactions(df: pd.DataFrame):
     return transactions, cancellations
 
 
-# --- 4️⃣ Detect outliers ---
+# --- 5️⃣ Filter invalid Quantities (only for transactions) ---
+def filter_invalid_quantities(df: pd.DataFrame) -> pd.DataFrame:
+    before = len(df)
+    df = df[df["Quantity"] > 0]
+    print(f"Filtered non-positive Quantities (transactions only): {before - len(df):,} rows removed")
+    return df
+
+
+# --- 6️⃣ Detect outliers ---
 def detect_outliers(df: pd.DataFrame, qty_threshold: int, price_threshold: float):
     qty_outliers = df[df["Quantity"] > qty_threshold]
     price_outliers = df[df["UnitPrice"] > price_threshold]
@@ -61,7 +77,7 @@ def detect_outliers(df: pd.DataFrame, qty_threshold: int, price_threshold: float
     return df_clean, outliers
 
 
-# --- 5️⃣ Save outputs ---
+# --- 7️⃣ Save outputs ---
 def save_datasets(transactions, cancellations, outliers, paths):
     transactions.to_csv(paths["transactions"], index=False)
     cancellations.to_csv(paths["cancellations"], index=False)
@@ -72,17 +88,29 @@ def save_datasets(transactions, cancellations, outliers, paths):
     print(f"✅ Saved outliers: {len(outliers):,} → {paths['outliers']}")
 
 
-# --- 6️⃣ Orchestrate pipeline ---
+# --- 8️⃣ Orchestrate pipeline ---
 def main():
     config = load_config()
     paths = config["paths"]
     thresholds = config["outlier_thresholds"]
 
     df = load_and_clean_data(Path(paths["raw_data"]))
+
+    # Step 1: remove bad prices from full dataset
+    df = filter_invalid_prices(df)
+
+    # Step 2: split into transactions/cancellations
     transactions, cancellations = split_transactions(df)
+
+    # Step 3: remove invalid quantities (transactions only)
+    transactions = filter_invalid_quantities(transactions)
+
+    # Step 4: detect and separate outliers
     clean_transactions, outliers = detect_outliers(
         transactions, thresholds["quantity"], thresholds["unit_price"]
     )
+
+    # Step 5: save everything
     save_datasets(clean_transactions, cancellations, outliers, paths)
 
 
