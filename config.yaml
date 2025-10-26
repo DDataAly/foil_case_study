@@ -6,6 +6,12 @@ paths:
   transactions: "/home/alyona/personal_projects/foil_case_study/data/transactions.csv"
   cancellations: "/home/alyona/personal_projects/foil_case_study/data/cancellations.csv"
   outliers: "/home/alyona/personal_projects/foil_case_study/data/outliers.csv"
+  warehouse: "/home/alyona/personal_projects/foil_case_study/data/warehouse"
+  fact_sales: "fact_sales.parquet"
+  dim_customers: "dim_customers.parquet"
+  dim_products: "dim_products.parquet"
+  dim_time: "dim_time.parquet"
+  outliers_parquet: "outliers.parquet"
 
 outlier_thresholds:
   quantity: 5000
