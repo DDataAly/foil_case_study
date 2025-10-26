@@ -79,6 +79,21 @@ A separate time dimension allows flexible grouping, filtering, and aggregation b
 
 ---
 
+## Outliers Table: `outliers`
+
+**Purpose:** Temporary quarantine for unusual transactions to be reviewed manually.
+
+**Columns:**
+- All columns match `fact_sales` (`invoice_no`, `customer_key`, `product_key`, `date_key`, `transaction_datetime`, `quantity`, `unit_price`, `sign`, `total_amount`, `transaction_type`)
+
+**Rationale:**  
+Keeping the same structure as `fact_sales` allows easy reinsertion of reviewed outliers back into the fact table. No separate dimension tables are needed.
+
+**Notes:**
+- The outliers table is **outside the main star schema**, serving as a quarantine.  
+- Once outliers are reviewed, they can be merged into `fact_sales` without needing transformations or separate dimension tables.  
+- This design keeps the warehouse clean, normalized, and ready for analytical queries.
+
 **Overall Rationale:**  
 This dimensional model follows the star schema pattern, with a central fact table (`fact_sales`) connected to dimension tables (`dim_customers`, `dim_products`, `dim_time`). It supports efficient analytical queries, reduces redundancy, and provides flexibility for aggregation and slicing of data along different dimensions. Surrogate keys simplify joins and ensure uniqueness across the schema.
 
