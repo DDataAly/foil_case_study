@@ -1,4 +1,109 @@
-# CASE STUDY
+# Online Retail Data Pipeline — Case Study
+
+## 📘 Project Summary
+
+This project implements a **complete end-to-end data engineering pipeline** for an online retail company, based on the *UCI Online Retail dataset (2010–2011)*.  
+The goal is to deliver a **reliable, high-quality, and analytically optimized data pipeline** that ingests, cleans, validates, and models transaction data for reporting and insights.
+
+The pipeline produces a **dimensional data model** designed for analytical queries, including:
+
+- **Fact table:** `fact_sales` — combines sales and cancellations  
+- **Dimension tables:** `dim_customers`, `dim_products`, `dim_time`  
+- **Quarantine table:** `outliers` — stores anomalous records pending review
+
+The design focuses on:
+
+- ✅ **Data quality and validation** — automated integrity and completeness checks  
+- ✅ **Maintainability** — config-driven file paths and thresholds  
+- ✅ **Analytical readiness** — star schema warehouse design  
+- ✅ **Transparency and reproducibility** — clear documentation and modular scripts
+
+
+## 🗂️ Project Structure
+
+The repository is organized for clarity, modularity, and reproducibility.  
+
+Below is the folder layout showing all key project components and their purpose:
+
+```bash
+foil_case_study/
+├── data/                           # Data assets generated and used by the pipeline
+│   ├── online_retail_raw.csv        # Raw dataset downloaded from UCI repository
+│   ├── transactions.csv             # Processed — cleaned sales transactions
+│   ├── cancellations.csv            # Processed — cleaned cancellation records
+│   ├── outliers.csv                 # Processed — records flagged as anomalies
+│   └── warehouse/                   # Analytical layer (star schema)
+│       ├── fact_sales.parquet       # Fact table — sales and cancellations combined
+│       └── outliers.parquet         # Quarantine table for anomalous records
+│
+├── db/
+│   └── schema.sql                   # SQL schema defining fact and dimension tables
+│
+├── etl/                             # Core ETL pipeline scripts
+│   ├── extract.py                   # Data extraction from UCI repository
+│   ├── transform.py                 # Data cleaning, filtering, and outlier detection
+│   ├── validate.py                  # Automated data validation checks
+│   └── load.py                      # Load step — builds warehouse tables in Parquet
+│
+├── src/
+│   └── helpers/
+│       └── logger.py                # Centralized logging utility (future use)
+│
+├── tests/                           # Unit tests for ETL modules
+│   ├── test_extract.py
+│   └── test_transform.py
+│
+├── exploration/                     # Exploratory analysis notebooks
+│   ├── initial_exploration.ipynb
+│   └── outliers_check.ipynb
+│
+├── config.yaml                      # Central configuration (paths, thresholds, parameters)
+├── requirements.txt                 # Python dependencies
+├── .gitignore                       # Excludes unnecessary files from version control
+└── README.md                        # Project documentation
+```
+
+## ⚙️ Setup & Instructions
+
+### 1. Environment setup
+
+Clone the repository and navigate to the project root:
+
+
+```bash
+git clone <your-repo-url>
+cd foil_case_study
+```
+Create virtual environment (recommended)
+```bash
+python -m venv venv
+```
+Activate virtual environment
+```bash
+# macOS/Linux
+source venv/bin/activate
+```
+```bash
+# Windows
+venv\Scripts\activate
+```
+Install dependencies
+```bash
+pip install -r requirements.txt
+```
+
+## 🛠 Configuration
+
+The project uses a single `config.yaml` file to manage all file paths, thresholds, and parameters. This ensures the pipeline is maintainable and can run on different systems without code changes.
+
+### Key points:
+
+- **Paths**: Define locations for raw data, processed outputs (transactions, cancellations, outliers), and warehouse parquet files (fact and dimension tables).  
+- **Outlier thresholds**: Specify quantity and unit price limits to flag anomalous records during transformation.
+
+All ETL scripts (`extract.py`, `transform.py`, `validate.py`, `load.py`) read paths and thresholds from this file, keeping the pipeline fully configurable.
+
+
 
 Instructions:
 Place online_retail_raw.csv under /data/ before running scripts.
