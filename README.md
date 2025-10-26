@@ -104,19 +104,51 @@ The project uses a single `config.yaml` file to manage all file paths, threshold
 All ETL scripts (`extract.py`, `transform.py`, `validate.py`, `load.py`) read paths and thresholds from this file, keeping the pipeline fully configurable.
 
 
+## 🚀 Pipeline Overview
 
-Instructions:
-Place online_retail_raw.csv under /data/ before running scripts.
+The pipeline implements a full end-to-end ETL workflow for online retail transactions. A single entry point, `run.py`, orchestrates all stages, ensuring reproducibility and maintainability.
+
+### Pipeline Stages
+
+1. **Extract (`extract.py`)**
+   - Downloads the raw dataset from the UCI repository.
+   - Saves the raw CSV file under `data/online_retail_raw.csv`.
+
+2. **Transform (`transform.py`)**
+   - Cleans and filters the raw data (removes duplicates, invalid quantities/prices, and missing critical fields).
+   - Splits data into **transactions**, **cancellations**, and **outliers**.
+   - Applies outlier thresholds based on quantity and unit price.
+   - Saves the outputs as CSV files under `data/`.
+
+3. **Validate (`validate.py`)**
+   - Performs automated data quality checks:
+     - Completeness of critical fields.
+     - Valid formats for `InvoiceNo` and `CustomerID`.
+     - Referential checks for quantities and prices.
+   - Flags any anomalies for review in logs.
+
+4. **Load (`load.py`)**
+   - Merges transactions and cancellations into a single fact table (`fact_sales`).
+   - Converts the data into Parquet format for warehouse storage.
+   - Saves dimension tables (`dim_customers`, `dim_products`, `dim_time`) and a quarantine table (`outliers`) to `data/warehouse/`.
 
 
-Design choice rationale:
-At the transform stage, transactions and cancellations are stored separately to preserve their distinct business logic and simplify validation. In the warehouse layer, both are unified into a single fact table (fact_sales) with an indicator column (transaction_type) to support net-sales analytical queries.
+### Orchestration (`run.py`)
 
-# Dimensional Data Model
+`run.py` serves as the **single entry point** for the entire pipeline.  
 
-To support analytical queries on retail transactions, we designed a dimensional data model consisting of a fact table and multiple dimension tables.
+- Executes all ETL stages in the correct order: **extract → transform → validate → load**.  
+- Ensures reproducibility and simplifies pipeline execution.  
+- Supports future automation or scheduling (e.g., via cron or Airflow).  
+- Users only need to run `python run.py` from the project root to process the dataset end-to-end.
 
-## Fact Table: `fact_sales`
+## 🗄️ Dimensional Data Model
+
+To support analytical queries on retail transactions, the pipeline implements a **star schema** consisting of a central fact table and multiple dimension tables.
+
+---
+
+### Fact Table: `fact_sales`
 
 **Purpose:** Stores individual sales transactions, including both completed and cancelled orders.
 
@@ -126,7 +158,7 @@ To support analytical queries on retail transactions, we designed a dimensional 
 - `invoice_no` – original invoice number (`VARCHAR(10) NOT NULL`)
 - `customer_key` – foreign key to `dim_customers`
 - `product_key` – foreign key to `dim_products`
-- `date_key` – foreign key to `dim_time` (date of transaction)
+- `date_key` – foreign key to `dim_time` (transaction date)
 - `transaction_datetime` – exact timestamp of the transaction (`TIMESTAMP NOT NULL`)
 - `quantity` – number of units sold (`INT NOT NULL`)
 - `unit_price` – price per unit (`DECIMAL(10,2) NOT NULL`)
@@ -135,11 +167,11 @@ To support analytical queries on retail transactions, we designed a dimensional 
 - `transaction_type` – `"SALE"` or `"CANCEL"` (`VARCHAR(10)`)
 
 **Rationale:**  
-Using a surrogate `transaction_key` simplifies joins and ensures uniqueness even if `invoice_no` is not strictly unique. Including `sign` and `transaction_type` allows straightforward revenue calculations and proper handling of cancellations. Storing `transaction_datetime` preserves the exact time of each transaction for time-based analyses. The `total_amount` is calculated at the database level to avoid repeated computations in queries.
+Including `sign` and `transaction_type` allows straightforward revenue calculations and proper handling of cancellations. Surrogate keys simplify joins and ensure uniqueness, while storing `transaction_datetime` preserves time-based analysis.
 
 ---
 
-## Dimension Table: `dim_customers`
+### Dimension Table: `dim_customers`
 
 **Purpose:** Stores customer information for analysis and segmentation.
 
@@ -150,10 +182,11 @@ Using a surrogate `transaction_key` simplifies joins and ensures uniqueness even
 - `country` – customer's country (`VARCHAR(50)`)
 
 **Rationale:**  
-A surrogate key ensures consistency in joins with the fact table. Customer attributes are stored in a separate table to reduce redundancy and support easy filtering by customer properties.
+Separating customer attributes reduces redundancy in the fact table and simplifies filtering by customer properties.
 
 ---
-## Dimension Table: `dim_products`
+
+### Dimension Table: `dim_products`
 
 **Purpose:** Stores product details to analyze sales by item.
 
@@ -164,10 +197,11 @@ A surrogate key ensures consistency in joins with the fact table. Customer attri
 - `description` – product name (`VARCHAR(255)`)
 
 **Rationale:**  
-Separating product information into a dimension table avoids repeated storage of product names in the fact table and simplifies product-level analyses. Surrogate keys allow consistent joins and prevent duplication issues.
+Keeps product metadata separate from facts to reduce duplication and enable product-level analytics.
+
 ---
 
-## Dimension Table: `dim_time`
+### Dimension Table: `dim_time`
 
 **Purpose:** Stores date-level information for time-based analytics.
 
@@ -180,36 +214,134 @@ Separating product information into a dimension table avoids repeated storage of
 - `weekday` – day of week (`VARCHAR(10)`)
 
 **Rationale:**  
-A separate time dimension allows flexible grouping, filtering, and aggregation by year, quarter, month, or weekday. This design improves query performance and simplifies date-based calculations in analytical reports.
+Supports flexible grouping and aggregation by year, quarter, month, or weekday without repeatedly extracting from `transaction_datetime`.
 
 ---
 
-## Outliers Table: `outliers`
+### Quarantine Table: `outliers`
 
-**Purpose:** Temporary quarantine for unusual transactions to be reviewed manually.
+**Purpose:** Stores anomalous or exceptional transactions for manual review.
 
-**Columns:**
-- All columns match `fact_sales` (`invoice_no`, `customer_key`, `product_key`, `date_key`, `transaction_datetime`, `quantity`, `unit_price`, `sign`, `total_amount`, `transaction_type`)
+**Columns:** Same as `fact_sales`
 
 **Rationale:**  
-Keeping the same structure as `fact_sales` allows easy reinsertion of reviewed outliers back into the fact table. No separate dimension tables are needed.
+Mirrors the fact table structure to allow easy reinsertion of reviewed records. Keeps the main warehouse clean and ready for analytics.
 
-**Notes:**
-- The outliers table is **outside the main star schema**, serving as a quarantine.  
-- Once outliers are reviewed, they can be merged into `fact_sales` without needing transformations or separate dimension tables.  
-- This design keeps the warehouse clean, normalized, and ready for analytical queries.
+---
 
-**Overall Rationale:**  
-This dimensional model follows the star schema pattern, with a central fact table (`fact_sales`) connected to dimension tables (`dim_customers`, `dim_products`, `dim_time`). It supports efficient analytical queries, reduces redundancy, and provides flexibility for aggregation and slicing of data along different dimensions. Surrogate keys simplify joins and ensure uniqueness across the schema.
+**Overall Design Notes:**
 
-Rationale: Simplifies reporting by precomputing useful time attributes, avoids repeated extraction logic from InvoiceDate.
+- Follows a **star schema pattern**: central fact table + dimension tables.  
+- Surrogate keys simplify joins and ensure uniqueness.  
+- Designed for efficient analytical queries and flexible aggregation.  
+- Outliers are quarantined separately to maintain warehouse integrity.
 
-Design Principles
+---
 
-Star Schema: Fact table at the center, dimension tables surrounding it.
+For a detailed list of table structures and columns, see [Data Dictionary](docs/data_dictionary.md).
 
-Normalization: Dimension tables remove redundancy from the fact table.
 
-Analytical efficiency: Queries like total revenue per customer or sales by product and day are simplified.
+## ✅ Data Quality & Validation
 
-Flexibility: Cancellations and outliers are handled via transaction_type and separate tables, preserving data integrity.
+Ensuring data integrity and reliability is a core part of this pipeline. Automated checks are implemented at multiple stages to catch anomalies early and maintain a high-quality dataset for analytics.
+
+### Key Data Quality Checks
+
+1. **Completeness Checks**
+   - Critical fields (`InvoiceNo`, `StockCode`, `CustomerID`, `Quantity`, `UnitPrice`, `InvoiceDate`) are validated to ensure no missing values.
+   - Missing or null records are removed during the transformation stage.
+
+2. **Format and Consistency**
+   - `InvoiceNo` must match expected patterns:  
+     - Transactions: 6-digit numbers (e.g., `123456`)  
+     - Cancellations: `C` prefix + 6-digit number (e.g., `C123456`)
+   - `CustomerID` must be a 5-digit string.
+   - `StockCode` must match the product code format.
+
+3. **Business Logic Validation**
+   - `Quantity` and `UnitPrice` must be positive for transactions.  
+   - Negative quantities indicate cancellations and are handled separately.
+   - Outlier detection:
+     - Quantities exceeding the threshold (`config.yaml: outlier_thresholds.quantity`)  
+     - Unit prices exceeding the threshold (`config.yaml: outlier_thresholds.unit_price`)  
+     - Outliers are removed from the main dataset and stored in `outliers` for review.
+
+4. **Referential Integrity**
+   - Fact table foreign keys reference dimension tables (`dim_customers`, `dim_products`, `dim_time`) using surrogate keys.
+   - Ensures consistent joins for analytical queries.
+
+5. **Logging and Alerts**
+   - Validation results are printed during pipeline execution.
+   - Any detected anomalies or errors are flagged for review, ensuring transparency and reproducibility.
+
+### Summary
+
+These automated checks guarantee that:
+
+- Only clean, consistent, and reliable data enters the warehouse.
+- Analysts can trust metrics derived from the fact table.
+- Anomalous data is quarantined without affecting overall analytics.
+
+## 🏃‍♂️ Usage & Execution
+
+The pipeline is designed for **end-to-end execution** with minimal user intervention. A single orchestration script, `run.py`, handles all stages in the correct order.
+
+### Running the Pipeline
+
+From the project root:
+
+```bash
+python run.py
+```
+### Pipeline Execution
+
+Running the pipeline via `run.py` executes the following stages:
+
+- **Extract** – Downloads the raw dataset from the UCI repository (`data/online_retail_raw.csv`).
+- **Transform** – Cleans the raw data, splits transactions and cancellations, and detects outliers.
+- **Validate** – Runs automated data quality checks and prints any issues found.
+- **Load** – Builds the dimensional warehouse tables (`fact_sales`, `dim_customers`, `dim_products`, `dim_time`) and saves the `outliers` quarantine table in Parquet format under `data/warehouse/`.
+
+### Output Files
+
+After successful execution, the following files are available in the warehouse layer (`data/warehouse/`):
+
+- `fact_sales.parquet` – Consolidated fact table (sales + cancellations)
+- `dim_customers.parquet` – Customer dimension
+- `dim_products.parquet` – Product dimension
+- `dim_time.parquet` – Time dimension
+- `outliers.parquet` – Quarantined anomalous records
+
+### Notes
+
+- The pipeline is **idempotent**: running `run.py` multiple times will overwrite outputs but not the raw data.
+- All thresholds, paths, and configurable parameters are read from `config.yaml`.
+- Logging and validation messages are printed to the console for transparency and debugging.
+
+## 📚 Dependencies
+
+This project uses Python 3.x and the following main libraries:
+
+- `pandas` – Data manipulation and cleaning  
+- `pyarrow` / `fastparquet` – Parquet I/O  
+- `yaml` – Configuration parsing  
+- `matplotlib` – Optional for data exploration  
+- `pytest` – Unit testing for ETL scripts  
+
+All dependencies are listed in `requirements.txt` and can be installed via:
+
+```bash
+pip install -r requirements.txt
+```
+
+## 📝 Assumptions & Notes
+
+- The UCI Online Retail dataset covers **2010–2011 UK transactions**.  
+- `InvoiceNo` starting with `"C"` indicates a **cancellation**.  
+- **Outliers** are defined using configurable thresholds (`quantity` and `unit_price`) in `config.yaml`.  
+- The warehouse uses a **star schema** with a fact table and three dimensions; outliers are **quarantined for review**.  
+- The pipeline is designed to be **reproducible, maintainable, and idempotent**.  
+- Logging is minimal to console for clarity; a future enhancement could include **persistent logging or monitoring**.
+
+
+
